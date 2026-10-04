@@ -87,10 +87,21 @@ def create_app(static_dir: str | None = None) -> FastAPI:
         except UnderstandingError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    directory = static_dir if static_dir is not None else get_settings().static_dir
-    if directory and Path(directory).is_dir():
-        # Mounted last so it never shadows the API routes.
-        app.mount("/", StaticFiles(directory=directory, html=True), name="static")
+    if static_dir != "":
+        candidates: list[Path] = []
+        if static_dir:
+            candidates.append(Path(static_dir))
+        elif get_settings().static_dir:
+            candidates.append(Path(get_settings().static_dir))
+        else:
+            candidates.append(Path(__file__).resolve().parents[3] / "frontend" / "dist")
+            candidates.append(Path("/app/static"))
+            candidates.append(Path("static"))
+
+        for cand in candidates:
+            if cand.is_dir() and (cand / "index.html").is_file():
+                app.mount("/", StaticFiles(directory=str(cand), html=True), name="static")
+                break
     return app
 
 
