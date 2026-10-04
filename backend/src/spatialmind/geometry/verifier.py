@@ -197,7 +197,7 @@ def check_clearance(memory: SpatialMemory) -> list[Violation]:
 # -- constraint evaluation ------------------------------------------------------------
 
 
-def _targets(memory: SpatialMemory, ref: str) -> list[tuple[str, Box]]:
+def resolve_targets(memory: SpatialMemory, ref: str) -> list[tuple[str, Box]]:
     placed = memory.resolve(ref)
     if placed:
         return [(o.id, footprint(o)) for o in placed]
@@ -238,7 +238,7 @@ def evaluate_constraint(memory: SpatialMemory, c: Constraint) -> ConstraintResul
                 )
         return ConstraintResult(constraint=desc, satisfied=True, detail="against wall")
 
-    targets = _targets(memory, c.target or "")
+    targets = resolve_targets(memory, c.target or "")
     if not targets:
         return ConstraintResult(constraint=desc, satisfied=False, detail="target not found")
 
