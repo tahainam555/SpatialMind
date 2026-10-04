@@ -9,10 +9,11 @@ RUN npm run build
 # Stage 2: FastAPI backend serving API + built frontend
 FROM python:3.11-slim
 WORKDIR /app
+RUN pip install --no-cache-dir --upgrade pip
 COPY backend/pyproject.toml ./backend/pyproject.toml
 COPY backend/src ./backend/src
 RUN pip install --no-cache-dir ./backend
-COPY --from=frontend /app/frontend/dist ./static
+COPY --from=frontend /app/frontend/dist /app/static
 ENV STATIC_DIR=/app/static
 EXPOSE 8000
 CMD ["sh", "-c", "uvicorn spatialmind.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
