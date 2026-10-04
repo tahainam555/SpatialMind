@@ -46,6 +46,16 @@ _DEFAULT_NEAR: dict[str, tuple[str, float]] = {
     "chair": ("desk", 0.3),
     "coffee_table": ("sofa", 0.9),
 }
+_DEFAULT_AWAY: dict[str, tuple[str, float]] = {"tv_stand": ("sofa", 2.0)}
+
+# Objects that should face a partner object (front vector pointing at the partner).
+_FACING: dict[str, tuple[str, ...]] = {
+    "chair": ("desk",),
+    "tv_stand": ("sofa",),
+    "armchair": ("tv_stand",),
+}
+# Placed first (in this order) so that dependent objects can be positioned relative to them.
+_ANCHORS = ("bed", "sofa", "tv_stand")
 
 
 def instance_ids(spec: SceneSpec) -> list[tuple[str, str]]:
@@ -65,15 +75,26 @@ def with_defaults(spec: SceneSpec) -> list[Constraint]:
     constraints = list(spec.constraints)
     has_wall = {c.subject for c in constraints if c.type == ConstraintType.AGAINST_WALL}
     has_near = {c.subject for c in constraints if c.type == ConstraintType.NEAR}
+    has_away = {c.subject for c in constraints if c.type == ConstraintType.AWAY_FROM}
     for category in sorted(present):
         entry = CATALOG[category]
         if not entry.freestanding and category not in has_wall:
             constraints.append(Constraint(type=ConstraintType.AGAINST_WALL, subject=category))
-        rule = _DEFAULT_NEAR.get(category)
-        if rule and rule[0] in present and category not in has_near:
+        near = _DEFAULT_NEAR.get(category)
+        if near and near[0] in present and category not in has_near:
             constraints.append(
                 Constraint(
-                    type=ConstraintType.NEAR, subject=category, target=rule[0], distance=rule[1]
+                    type=ConstraintType.NEAR, subject=category, target=near[0], distance=near[1]
+                )
+            )
+        away = _DEFAULT_AWAY.get(category)
+        if away and away[0] in present and category not in has_away:
+            constraints.append(
+                Constraint(
+                    type=ConstraintType.AWAY_FROM,
+                    subject=category,
+                    target=away[0],
+                    distance=away[1],
                 )
             )
     return constraints
@@ -87,9 +108,10 @@ def new_memory(spec: SceneSpec) -> SpatialMemory:
 
 
 def _order(items: list[tuple[str, str]]) -> list[tuple[str, str]]:
-    def key(item: tuple[str, str]) -> tuple[int, float, str]:
+    def key(item: tuple[str, str]) -> tuple[int, int, float, str]:
         entry = CATALOG[item[1]]
-        return (item[1] in _COMPANIONS, -entry.width * entry.depth, item[0])
+        rank = _ANCHORS.index(item[1]) if item[1] in _ANCHORS else len(_ANCHORS)
+        return (item[1] in _COMPANIONS, rank, -entry.width * entry.depth, item[0])
 
     return sorted(items, key=key)
 
@@ -176,9 +198,10 @@ def _score(memory: SpatialMemory, obj: PlacedObject) -> float:
             else:
                 limit = c.distance or AWAY_DEFAULT
                 score += (3.0 + min(gap, 2 * limit) * 0.1) if gap >= limit else -(limit - gap) * 2
-    if obj.category == "chair":  # a chair should face the desk it serves
-        for desk in memory.resolve("desk"):
-            dx, dy = desk.x - obj.x, desk.y - obj.y
+    for partner_category in _FACING.get(obj.category, ()):
+        partners = memory.resolve(partner_category)
+        if partners:  # face the partner: front vector aligned with the direction towards it
+            dx, dy = partners[0].x - obj.x, partners[0].y - obj.y
             norm = math.hypot(dx, dy) or 1.0
             fx, fy = front_vector(obj.rotation)
             score += 2.0 * (fx * dx + fy * dy) / norm
